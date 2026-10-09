@@ -10,6 +10,7 @@ import pytest
 import call_helpers
 from call_helpers import get_load_context
 from evals.replay import build_greeting_context
+from evals.safety import offline_guard
 
 
 FAKE_LOAD = {
@@ -45,6 +46,7 @@ async def test_successful_load_lookup_replaces_greeting_prompt_and_preserves_his
     lookup = MagicMock(return_value=FAKE_LOAD)
     update_call_load = MagicMock()
     with (
+        offline_guard(),
         patch.object(
             call_helpers.NegotiationDBService,
             "get_load_by_reference",
@@ -94,6 +96,7 @@ async def test_invalid_reference_never_reaches_database_or_changes_context():
     lookup = MagicMock()
     update_call_load = MagicMock()
     with (
+        offline_guard(),
         patch.object(
             call_helpers.NegotiationDBService,
             "get_load_by_reference",
@@ -137,6 +140,7 @@ async def test_missing_load_preserves_greeting_and_does_not_update_call():
     lookup = MagicMock(return_value=None)
     update_call_load = MagicMock()
     with (
+        offline_guard(),
         patch.object(
             call_helpers.NegotiationDBService,
             "get_load_by_reference",

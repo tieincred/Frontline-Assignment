@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import socket
 from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -13,19 +11,11 @@ from uuid import UUID
 import call_helpers
 from call_helpers import record_agreement
 from evals.checks import EvaluationResult, check_above_max_recording
+from evals.safety import offline_guard
 
 
 MAX_RATE = 2100.0
 ABOVE_MAX_PRICE = 2200.0
-_DUMMY_CONFIGURATION = {
-    "SUPABASE_URL": "http://test-suite.local",
-    "SUPABASE_SERVICE_ROLE_KEY": "test-key",
-    "KCH_QUOTE_CLIENT_ID": "not-used",
-    "KCH_QUOTE_CLIENT_SECRET": "not-used",
-    "KCH_QUOTE_SCOPE": "not-used",
-}
-
-
 @dataclass(frozen=True)
 class AgreementScenarioReport:
     """Observed side effects and evaluations for both above-max tool calls."""
@@ -68,8 +58,7 @@ async def run_above_max_agreement_scenario() -> AgreementScenarioReport:
     )
     notify_quote = MagicMock(return_value="quote-001")
     with (
-        patch.dict(os.environ, _DUMMY_CONFIGURATION, clear=False),
-        patch.object(socket.socket, "connect", side_effect=AssertionError("network blocked")),
+        offline_guard(),
         patch.object(call_helpers, "save_agreement", new=save_agreement),
         patch.object(
             call_helpers.NegotiationDBService,

@@ -1,45 +1,39 @@
 # Evaluation decisions
 
-## Scope
+## Implemented scope
 
-- Preserve the existing single-prompt architecture and production code.
-- Run handlers offline with mocked persistence, quote, telephony, and network
-  boundaries. Use placeholder configuration only.
-- Do not claim coverage of live LLM behavior, audio, speech recognition,
-  telephony, provider authentication, or real service writes.
+- Preserve production code and the existing single-prompt architecture.
+- Run handler probes with dummy configuration, mocked side-effect boundaries,
+  and a socket-level no-network tripwire.
+- Keep real handler results separate from synthetic grader calibration.
+- Make no claim about live model choice, audio, speech recognition, Daily,
+  real persistence, provider authentication, or concurrent tool calls.
 
-## Chosen risks
+## Actual findings
 
-1. A strictly above-max price recorded as a normal agreement is the highest
-   current financial risk because it can also trigger quote submission.
-2. An above-max follow-up is legitimate only when explicitly marked, supplied
-   with contact details, and not submitted as a quote.
-3. Failed load lookup must not replace the greeting prompt or update a call.
-4. The lookup service currently ignores its `org_id` argument. This is recorded
-   as an ownership-boundary limitation rather than misrepresented as tested
-   tenant isolation.
-5. Transfer currently proves a loaded reference/routing but not confirmed
-   carrier identity; evaluate and report the gap without silently changing
-   production behavior.
-6. Internal-rate confidentiality applies to carrier-facing Room1. Room2 is
-   explicitly broker-facing and may discuss those rates when asked.
+1. An above-max price submitted with `above_max=false` is saved as a normal
+   agreement and quoted. The runner exits 1 for this observed handler behavior.
+2. An above-max follow-up with contact details is saved and not quoted.
+3. A transfer with a loaded reference but `carrier_identity_confirmed=false`
+   still sets transfer metadata and schedules transfer. The runner exits 1 for
+   this observed handler behavior.
+4. Invalid and missing load lookups preserve the greeting/history and avoid a
+   call-record update. A successful lookup replaces the system prompt and sets
+   load state.
+5. `get_load_by_reference` ignores `org_id`; record this as a known limitation,
+   not a passing tenant-isolation test.
 
-## Trade-offs
+## Calibration decision
 
-- Handler checks are deterministic and safe, but do not show that a model will
-  choose the right tool call from arbitrary speech.
-- Synthetic text/tool-trace graders test grader calibration, not model quality.
-- Existing functional tests remain the source for lower-level phone persistence,
-  lookup, and transfer-routing behavior; evaluation scenarios add cross-boundary
-  product evidence instead of duplicating them.
-- Exact-ceiling behavior remains a product ambiguity. The current prompt's rate
-  bands suggest a firm-at-ceiling result should be `no_agreement`, while another
-  prompt phrase can be read more broadly. Record it until product direction is
-  supplied rather than silently treating it as above-max.
+The Room1 disclosure grader uses planted controls only. Its bad control is not
+an observed product failure; it proves the grader rejects a trace containing
+internal goal/ceiling values and labels. Its good control proves an opening-rate
+response can pass. Room2 is excluded because its broker-facing prompt permits
+internal-rate discussion.
 
-## Current finding
+## Deferred work
 
-The offline runner intentionally exits 1 because a price above the fixture
-maximum, passed to `record_agreement` with `above_max=false`, is observed as a
-normal saved agreement and a quote notification. The test passes because it
-detects this real product behavior; the product safety outcome does not pass.
+Close-ordering evaluation is deliberately deferred. Exact-ceiling behavior also
+remains a product ambiguity: the prompt's rate bands suggest `no_agreement` for
+a firm-at-ceiling bid, while another phrase can be read more broadly. Neither is
+claimed as implemented coverage.
