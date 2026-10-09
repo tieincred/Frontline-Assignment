@@ -125,8 +125,8 @@ async def test_invalid_reference_never_reaches_database_or_changes_context():
 
 
 @pytest.mark.asyncio
-async def test_missing_org_load_preserves_greeting_and_does_not_update_call():
-    """A plausible reference that is absent for this org cannot switch prompts."""
+async def test_missing_load_preserves_greeting_and_does_not_update_call():
+    """A plausible reference with no result cannot switch prompts."""
     context = build_greeting_context(org_name="Northstar Freight")
     original_messages = context.messages.copy()
     tool_results: list[dict] = []
