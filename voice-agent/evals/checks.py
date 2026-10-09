@@ -38,8 +38,8 @@ def check_above_max_recording(
 
     evidence = [
         f"Observed price ${agreed_price:.2f} above max ${max_rate:.2f}.",
-        f"Database record: {'created' if database_recorded else 'not created'}.",
-        f"Carrier quote: {'sent' if quote_sent else 'not sent'}.",
+        f"Save call: {'observed' if database_recorded else 'not observed'}.",
+        f"Quote-notification call: {'observed' if quote_sent else 'not observed'}.",
     ]
 
     if above_max:

@@ -68,7 +68,7 @@ async def run_unconfirmed_transfer_probe() -> TransferProbeReport:
         )
 
     orchestration_started = orchestrator.set_transfer_metadata.called
-    transfer_scheduled = speech_sync.schedule_after_speech.await_count == 1
+    transfer_scheduled = speech_sync.schedule_after_speech.await_count > 0
     evaluation = EvaluationResult(
         passed=not orchestration_started and not transfer_scheduled,
         evidence=(

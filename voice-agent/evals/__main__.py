@@ -23,8 +23,10 @@ async def main() -> int:
 
     print("Real handler probes")
     print("Above-max agreement")
-    print(f"save_agreement calls: {agreement.save_calls}")
-    print(f"notify_carrier_quote calls: {agreement.quote_calls}")
+    print(f"normal save calls: {agreement.normal_save_calls}")
+    print(f"normal quote calls: {agreement.normal_quote_calls}")
+    print(f"follow-up save calls: {agreement.follow_up_save_calls}")
+    print(f"follow-up quote calls: {agreement.follow_up_quote_calls}")
     _print_evaluation("normal agreement path", agreement.normal_evaluation)
     _print_evaluation("above-max follow-up path", agreement.follow_up_evaluation)
     print("Unconfirmed transfer")
@@ -35,7 +37,9 @@ async def main() -> int:
     _print_evaluation("Room1 planted bad control", calibration.planted_bad_control)
 
     handler_failures = (
-        not agreement.normal_evaluation.passed or not transfer.evaluation.passed
+        not agreement.normal_evaluation.passed
+        or not agreement.follow_up_evaluation.passed
+        or not transfer.evaluation.passed
     )
     calibration_failed = (
         not calibration.good_control.passed or calibration.planted_bad_control.passed

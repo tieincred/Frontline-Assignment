@@ -11,8 +11,8 @@ the single-prompt architecture and observes the production prompt transition.
 | Successful load lookup | Fixture load after greeting history | System prompt replacement, preserved history, `load_uuid`/`load_context`, call-record update | Pass |
 | Invalid reference | Transcript junk reference | No lookup/write, error result, unchanged context | Pass |
 | Missing load | Plausible reference returning no result | Lookup gets supplied org ID, no call-record update, unchanged context | Pass; not tenant-isolation coverage |
-| Above-max normal agreement | `$2200 > $2100`, `above_max=false` | Save and quote-notification calls | Product behavior fails; evaluator detects it |
-| Above-max follow-up | Same price, `above_max=true`, contacts | Save call, no quote call | Pass |
+| Above-max normal agreement | `$2200 > $2100`, `above_max=false` | Mocked save and quote-notification calls | Product behavior fails; evaluator detects it |
+| Above-max follow-up | Same price, `above_max=true`, contacts | Mocked save call, no quote-notification call | Pass |
 | Unconfirmed transfer | Loaded reference, `carrier_identity_confirmed=false` | Transfer metadata and scheduling calls | Product behavior fails; evaluator detects it |
 
 `get_load_by_reference` ignores its `org_id` parameter because current KCH load
@@ -31,7 +31,8 @@ discussion with the human broker.
 
 Every implemented handler probe applies dummy configuration and a socket
 tripwire that fails any unexpected network connection. Database, quote, and
-transfer boundaries are mocks.
+transfer boundaries are mocks: a recorded mock call does not claim completed
+persistence or quote delivery.
 
 The suite does not verify live model choice, speech recognition, TTS, Daily
 rooms, real provider authentication, real persistence, audio timing, or
@@ -40,12 +41,12 @@ concurrent tool-call behavior. Close-ordering evaluation is deferred.
 ## Portable setup and run
 
 The suite requires Python 3.11 plus the repository requirement files. With
-`uv` available:
+`uv` available, create and use a local environment from `voice-agent/`:
 
 ```bash
-uv venv --python 3.11 .venv
 cd voice-agent
-../.venv/bin/python -m pip install -r requirements.txt -r tests/requirements-test.txt
+uv venv --python 3.11 .venv
+.venv/bin/python -m pip install -r requirements.txt -r tests/requirements-test.txt
 ```
 
 Run with placeholders only:
@@ -53,17 +54,19 @@ Run with placeholders only:
 ```bash
 cd voice-agent
 SUPABASE_URL=http://test-suite.local SUPABASE_SERVICE_ROLE_KEY=test-key \
-  /tmp/e3-voice-agent-eval-venv/bin/python -m pytest \
+  .venv/bin/python -m pytest \
   tests/test_eval_replay.py tests/test_eval_agreement.py \
   tests/test_eval_transfer.py tests/test_eval_prompt_grading.py -q
 
 SUPABASE_URL=http://test-suite.local SUPABASE_SERVICE_ROLE_KEY=test-key \
-  /tmp/e3-voice-agent-eval-venv/bin/python -m evals
+  .venv/bin/python -m evals
 ```
 
-The runner intentionally exits non-zero while it observes the current unsafe
-normal-agreement and unconfirmed-transfer handler behavior. A passing pytest
-test that detects either finding is not a passing product behavior.
+Pytest covers the load-lookup replay and harness contracts. The CLI reports the
+real agreement and transfer handler probes separately from synthetic grader
+calibration. It intentionally exits non-zero while it observes the current
+unsafe normal-agreement and unconfirmed-transfer handler behavior. A passing
+pytest test that detects either finding is not a passing product behavior.
 
 Current run evidence: the six pytest checks passed, while `python -m evals`
 reported the two real-handler failures and exited 1.

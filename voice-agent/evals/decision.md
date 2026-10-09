@@ -11,9 +11,11 @@
 
 ## Actual findings
 
-1. An above-max price submitted with `above_max=false` is saved as a normal
-   agreement and quoted. The runner exits 1 for this observed handler behavior.
-2. An above-max follow-up with contact details is saved and not quoted.
+1. An above-max price submitted with `above_max=false` issues mocked normal-save
+   and quote-notification calls. The runner exits 1 for this observed handler
+   behavior; the mocks do not prove completed persistence or delivery.
+2. An above-max follow-up with contact details issues a mocked save call and no
+   quote-notification call.
 3. A transfer with a loaded reference but `carrier_identity_confirmed=false`
    still sets transfer metadata and schedules transfer. The runner exits 1 for
    this observed handler behavior.

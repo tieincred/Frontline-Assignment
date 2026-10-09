@@ -24,8 +24,10 @@ class AgreementScenarioReport:
     follow_up_result: dict
     normal_evaluation: EvaluationResult
     follow_up_evaluation: EvaluationResult
-    save_calls: tuple[tuple, ...]
-    quote_calls: tuple[dict[str, object], ...]
+    normal_save_calls: tuple[tuple, ...]
+    normal_quote_calls: tuple[dict[str, object], ...]
+    follow_up_save_calls: tuple[tuple, ...]
+    follow_up_quote_calls: tuple[dict[str, object], ...]
 
 
 def _agreement_context() -> SimpleNamespace:
@@ -66,6 +68,8 @@ async def run_above_max_agreement_scenario() -> AgreementScenarioReport:
             new=notify_quote,
         ),
     ):
+        normal_save_start = len(save_agreement.call_args_list)
+        normal_quote_start = len(notify_quote.call_args_list)
         await record_agreement(
             "record_agreement",
             "normal-above-max",
@@ -74,18 +78,22 @@ async def run_above_max_agreement_scenario() -> AgreementScenarioReport:
             context,
             capture_normal_result,
         )
+        normal_save_calls = tuple(
+            call.args for call in save_agreement.call_args_list[normal_save_start:]
+        )
+        normal_quote_calls = tuple(
+            dict(call.kwargs) for call in notify_quote.call_args_list[normal_quote_start:]
+        )
         normal_evaluation = check_above_max_recording(
             max_rate=MAX_RATE,
             agreed_price=ABOVE_MAX_PRICE,
             above_max=False,
-            database_recorded=save_agreement.call_count == 1,
-            quote_sent=notify_quote.call_count == 1,
-        )
-        normal_quote_calls = tuple(
-            dict(call.kwargs) for call in notify_quote.call_args_list
+            database_recorded=bool(normal_save_calls),
+            quote_sent=bool(normal_quote_calls),
         )
 
-        notify_quote.reset_mock()
+        follow_up_save_start = len(save_agreement.call_args_list)
+        follow_up_quote_start = len(notify_quote.call_args_list)
         await record_agreement(
             "record_agreement",
             "follow-up-above-max",
@@ -99,12 +107,18 @@ async def run_above_max_agreement_scenario() -> AgreementScenarioReport:
             context,
             capture_follow_up_result,
         )
+        follow_up_save_calls = tuple(
+            call.args for call in save_agreement.call_args_list[follow_up_save_start:]
+        )
+        follow_up_quote_calls = tuple(
+            dict(call.kwargs) for call in notify_quote.call_args_list[follow_up_quote_start:]
+        )
         follow_up_evaluation = check_above_max_recording(
             max_rate=MAX_RATE,
             agreed_price=ABOVE_MAX_PRICE,
             above_max=True,
-            database_recorded=save_agreement.call_count == 2,
-            quote_sent=notify_quote.called,
+            database_recorded=bool(follow_up_save_calls),
+            quote_sent=bool(follow_up_quote_calls),
         )
 
     return AgreementScenarioReport(
@@ -112,6 +126,8 @@ async def run_above_max_agreement_scenario() -> AgreementScenarioReport:
         follow_up_result=follow_up_results[0],
         normal_evaluation=normal_evaluation,
         follow_up_evaluation=follow_up_evaluation,
-        save_calls=tuple(call.args for call in save_agreement.call_args_list),
-        quote_calls=normal_quote_calls,
+        normal_save_calls=normal_save_calls,
+        normal_quote_calls=normal_quote_calls,
+        follow_up_save_calls=follow_up_save_calls,
+        follow_up_quote_calls=follow_up_quote_calls,
     )
