@@ -40,12 +40,13 @@ concurrent tool-call behavior. Close-ordering evaluation is deferred.
 
 ## Portable setup and run
 
-The suite requires Python 3.11 plus the repository requirement files. With
-`uv` available, create and use a local environment from `voice-agent/`:
+The suite requires Python 3.11 plus the repository requirement files. From a
+fresh checkout at the repository root, use this complete sequence. `--seed`
+installs pip into the new environment, so the install command is available:
 
 ```bash
 cd voice-agent
-uv venv --python 3.11 .venv
+uv venv --seed --python 3.11 .venv
 .venv/bin/python -m pip install -r requirements.txt -r tests/requirements-test.txt
 ```
 
@@ -68,5 +69,12 @@ calibration. It intentionally exits non-zero while it observes the current
 unsafe normal-agreement and unconfirmed-transfer handler behavior. A passing
 pytest test that detects either finding is not a passing product behavior.
 
-Current run evidence: the six pytest checks passed, while `python -m evals`
-reported the two real-handler failures and exited 1.
+## Completed run excerpt
+
+```text
+6 passed
+normal above-max agreement: FAIL
+above-max follow-up: PASS
+unconfirmed transfer: FAIL
+runner exit code: 1
+```
