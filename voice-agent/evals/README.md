@@ -41,6 +41,9 @@ and must not be interpreted as one. The complete command runs the shared
 handler scenarios and the pytest harness, then overwrites `report.md` and
 `report.json` with commit, UTC timestamp, duration, run count, exact pytest
 exit/output, scenario table, evidence, and its own exit decision.
+The report names both the evaluated Git revision and working-tree changes; the
+JSON retains each completed run instead of only the last one. An aggregate
+scenario fails if any captured run fails.
 
 ## Reading results and exit codes
 

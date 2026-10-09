@@ -18,6 +18,11 @@ def _commit() -> str:
     return result.stdout.strip() if result.returncode == 0 else "unavailable"
 
 
+def _working_tree_changes() -> str:
+    result = subprocess.run(["git", "-c", f"safe.directory={WORKSPACE_ROOT}", "status", "--short"], cwd=WORKSPACE_ROOT, check=False, capture_output=True, text=True)
+    return result.stdout.strip() or "clean"
+
+
 def scenario(name: str, expected: str, observed: str, result: EvaluationResult, *, verdict: str | None = None) -> dict:
     return {"name": name, "expected": expected, "observed": observed, "verdict": verdict or ("PASS" if result.passed else "FAIL"), "evidence": list(result.evidence)}
 
@@ -36,14 +41,16 @@ def _table(items: list[dict]) -> str:
     return "\n".join(rows)
 
 
-def write_report(*, run_count: int, duration_seconds: float, evaluation_pytest: str, existing_regression: str, real_handlers: list[dict], prompt_contracts: list[dict], calibration: list[dict], errors: list[str]) -> dict:
+def write_report(*, requested_run_count: int, run_results: list[dict], duration_seconds: float, evaluation_pytest: str, existing_regression: str, real_handlers: list[dict], prompt_contracts: list[dict], calibration: list[dict], errors: list[str]) -> dict:
     """Write JSON and Markdown evidence while preserving category boundaries."""
     real = _summary(real_handlers, allow_unresolved=True)
     prompts = _summary(prompt_contracts)
     synthetic = _summary(calibration)
     report = {
-        "generated_at": datetime.now(timezone.utc).isoformat(), "commit": _commit(),
-        "completed_run_count": run_count, "duration_seconds": round(duration_seconds, 3),
+        "generated_at": datetime.now(timezone.utc).isoformat(), "evaluated_source_revision": _commit(),
+        "working_tree_changes": _working_tree_changes(),
+        "requested_run_count": requested_run_count, "completed_run_count": len(run_results),
+        "run_results": run_results, "duration_seconds": round(duration_seconds, 3),
         "unique_scenario_count": len(real_handlers) + len(prompt_contracts) + len(calibration),
         "evaluation_pytest": evaluation_pytest, "existing_regression_tests": existing_regression,
         "real_handler_summary": {**real, "errored": len(errors)},
@@ -55,9 +62,10 @@ def write_report(*, run_count: int, duration_seconds: float, evaluation_pytest: 
     (REPORT_DIR / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     markdown = f"""# Offline evaluation report
 
-- Commit: `{report['commit']}`
+- Evaluated source revision: `{report['evaluated_source_revision']}`
+- Working-tree changes at evaluation: `{report['working_tree_changes']}`
 - Timestamp (UTC): `{report['generated_at']}`
-- Completed run count: {run_count}
+- Completed run count: {report['completed_run_count']}/{requested_run_count}
 - Duration: {report['duration_seconds']} seconds
 - Unique scenario count: {report['unique_scenario_count']} (handler, prompt-contract, and synthetic-control scenarios; assertions are not counted separately)
 - Evaluation-harness pytest: {evaluation_pytest}

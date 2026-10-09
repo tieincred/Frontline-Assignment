@@ -51,9 +51,15 @@ def run_prompt_contracts() -> PromptContractReport:
         evidence=(f"Normalized formatted rates: start={formatted['startRate']}, goal={formatted['bookNowRate']}, max={formatted['maxRate']}.", f"Builder error: {formatted_error!r}.", "Checked formatted opening rate is rendered."),
     )
     equal, equal_prompt, equal_error = _build(_raw_load(start_rate=1800, book_now_rate=1800, max_rate=2100))
-    equal_contradiction = equal_error is None and "State your initial offer: \"This lane is going for $1800.0\"" in equal_prompt and "FORBIDDEN DOLLAR AMOUNTS" in equal_prompt
+    opening_instruction = 'State your initial offer: "This lane is going for $1800.0"'
+    forbidden_opening_amount = "- $1800.0 / $1,800.0"
+    equal_contradiction = (
+        equal_error is None
+        and opening_instruction in equal_prompt
+        and forbidden_opening_amount in equal_prompt
+    )
     equal_result = EvaluationResult(
-        passed=not equal_contradiction,
-        evidence=(f"Normalized equal rates: start={equal['startRate']}, goal={equal['bookNowRate']}, max={equal['maxRate']}.", f"Builder error: {equal_error!r}.", "Finding: opening rate equals internal goal while the prompt both requires saying it and forbids exact internal-goal amounts." if equal_contradiction else "No opening/goal contradiction observed."),
+        passed=equal_error is None and not equal_contradiction,
+        evidence=(f"Normalized equal rates: start={equal['startRate']}, goal={equal['bookNowRate']}, max={equal['maxRate']}.", f"Builder error: {equal_error!r}.", f"Required opening instruction present: {opening_instruction in equal_prompt if equal_prompt else False}.", f"Actual opening amount forbidden: {forbidden_opening_amount in equal_prompt if equal_prompt else False}.", "Finding: opening rate equals internal goal while the prompt both requires saying it and forbids that exact amount." if equal_contradiction else "No opening/goal contradiction observed."),
     )
     return PromptContractReport(ordinary_result, no_rate_result, formatted_result, equal_result)

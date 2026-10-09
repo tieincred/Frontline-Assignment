@@ -17,8 +17,7 @@ from evals.replay import run_lookup_replay_scenarios
 from evals.report import scenario, write_report
 from evals.transfer import run_unconfirmed_transfer_probe
 
-
-EVAL_TESTS = ["tests/test_eval_replay.py", "tests/test_eval_agreement.py", "tests/test_eval_transfer.py", "tests/test_eval_prompt_grading.py", "tests/test_eval_end_call.py", "tests/test_eval_prompt_contracts.py", "tests/test_eval_behavioral.py"]
+EVAL_TESTS = ["tests/test_eval_replay.py", "tests/test_eval_agreement.py", "tests/test_eval_transfer.py", "tests/test_eval_prompt_grading.py", "tests/test_eval_end_call.py", "tests/test_eval_prompt_contracts.py", "tests/test_eval_behavioral.py", "tests/test_eval_runner.py"]
 EXISTING_REGRESSION_TESTS = ["tests/test_phone_carrier_lookup.py", "tests/test_transfer_tool_handler.py"]
 
 
@@ -27,21 +26,73 @@ def _pytest(paths: list[str]) -> tuple[str, bool]:
     return f"exit {result.returncode}: {result.stdout.strip()}", result.returncode == 0
 
 
+def _row(name: str, expected: str, result, verdict: str | None = None) -> dict:
+    """Use handler/grader evidence itself as the reported observation."""
+    observed = " ".join(result.evidence)
+    return scenario(name, expected, observed, result, verdict=verdict)
+
+
+def _capture_rows(lookup, agreement, transfer, end_call, prompts, room1, behavioral) -> dict[str, list[dict]]:
+    calibration = [
+        _row("Room1 good disclosure control", "accept safe text", room1.good_control),
+        _row("Room1 planted disclosure control", "reject internal target/ceiling", room1.planted_bad_control, "PASS" if not room1.planted_bad_control.passed else "FAIL"),
+        *[_row(name, "accept acceptable / reject unacceptable scripted trace", result, "PASS" if result.passed == ("unacceptable" not in name) else "FAIL") for name, result in behavioral.controls],
+    ]
+    return {
+        "real_handlers": [
+            _row("lookup success", "replace system prompt; preserve history; update call record", lookup.successful_lookup),
+            _row("lookup invalid reference", "error with no lookup/write or context mutation", lookup.invalid_reference),
+            _row("lookup missing load", "error with org argument and no call write", lookup.missing_load),
+            _row("above-max normal agreement", "no save and no quote", agreement.normal_evaluation),
+            _row("above-max follow-up", "exact follow-up save payload; no quote", agreement.follow_up_evaluation, "PASS" if agreement.follow_up_evaluation.passed and agreement.follow_up_payload_evaluation.passed else "FAIL"),
+            _row("below-ceiling agreement", "exact save and quote payloads", agreement.below_ceiling_evaluation),
+            _row("save failure", "error and no quote after None save", agreement.save_failure_evaluation),
+            _row("transfer identity fixture", "policy unspecified across feature flags", transfer.evaluation, transfer.policy_verdict),
+            _row("end_call valid reason", "store agreement reason and queue EndFrame", end_call.valid_reason),
+            _row("end_call invalid reason", "error; no state mutation or EndFrame", end_call.invalid_reason),
+        ],
+        "prompt_contracts": [
+            _row("ordinary priced prompt", "normalized rates and agreement/end instructions", prompts.ordinary_priced),
+            _row("no-rate prompt", "no-rate instruction without literal None prices", prompts.no_rate),
+            _row("formatted-rate prompt", "parse $1,800.50 / 1,950 / $2,100 and render opening", prompts.formatted_rate),
+            _row("equal opening/goal prompt", "no instruction contradiction and no builder exception", prompts.equal_opening_goal),
+        ],
+        "synthetic_calibration": calibration,
+    }
+
+
+def _aggregate(runs: list[dict], category: str) -> list[dict]:
+    """Keep every captured run and fail an aggregate row if any run fails."""
+    if not runs:
+        return []
+    output: list[dict] = []
+    for index, first in enumerate(runs[0][category]):
+        per_run = [run[category][index] for run in runs]
+        verdicts = [row["verdict"] for row in per_run]
+        verdict = "FAIL" if "FAIL" in verdicts else "UNRESOLVED" if all(item == "UNRESOLVED" for item in verdicts) else "PASS"
+        evidence = [f"Run {number + 1}: {item}" for number, row in enumerate(per_run) for item in row["evidence"]]
+        output.append({**first, "verdict": verdict, "observed": " ".join(evidence), "evidence": evidence})
+    return output
+
+
 async def main(run_count: int) -> int:
     started = time.monotonic()
     errors: list[str] = []
-    try:
-        for _ in range(run_count):
-            lookup = await run_lookup_replay_scenarios()
-            agreement = await run_above_max_agreement_scenario()
-            transfer = await run_unconfirmed_transfer_probe()
-            end_call = await run_end_call_scenarios()
-            prompts = run_prompt_contracts()
-            room1 = run_room1_grader_calibration()
-            behavioral = run_behavioral_calibration()
-    except Exception as error:
-        errors.append(f"scenario execution: {type(error).__name__}: {error}")
-        lookup = agreement = transfer = end_call = prompts = room1 = behavioral = None
+    completed_runs: list[dict] = []
+    for run_number in range(1, run_count + 1):
+        try:
+            captured = _capture_rows(
+                await run_lookup_replay_scenarios(),
+                await run_above_max_agreement_scenario(),
+                await run_unconfirmed_transfer_probe(),
+                await run_end_call_scenarios(),
+                run_prompt_contracts(),
+                run_room1_grader_calibration(),
+                run_behavioral_calibration(),
+            )
+            completed_runs.append(captured)
+        except Exception as error:
+            errors.append(f"run {run_number} scenario execution: {type(error).__name__}: {error}")
 
     eval_pytest, eval_ok = _pytest(EVAL_TESTS)
     existing_pytest, existing_ok = _pytest(EXISTING_REGRESSION_TESTS)
@@ -50,36 +101,16 @@ async def main(run_count: int) -> int:
     if not existing_ok:
         errors.append(f"existing regression pytest failed: {existing_pytest}")
 
-    handlers: list[dict] = []
-    prompt_rows: list[dict] = []
-    calibration: list[dict] = []
-    if not errors or lookup is not None:
-        handlers = [
-            scenario("lookup success", "replace system prompt; preserve history; update call record", "success result and expected state changes", lookup.successful_lookup),
-            scenario("lookup invalid reference", "error with no lookup/write or context mutation", "error; no lookup/write; context unchanged", lookup.invalid_reference),
-            scenario("lookup missing load", "error with org argument and no call write", "error; org argument observed; context unchanged", lookup.missing_load),
-            scenario("above-max normal agreement", "no save and no quote", "mocked save and quote call observed", agreement.normal_evaluation),
-            scenario("above-max follow-up", "exact follow-up save payload; no quote", "exact payload/no quote observed", agreement.follow_up_evaluation, verdict="PASS" if agreement.follow_up_evaluation.passed and agreement.follow_up_payload_evaluation.passed else "FAIL"),
-            scenario("below-ceiling agreement", "exact save and quote payloads", "exact payloads observed", agreement.below_ceiling_evaluation),
-            scenario("save failure", "error and no quote after None save", "database error and no quote observed", agreement.save_failure_evaluation),
-            scenario("transfer identity fixture", "policy unspecified across feature flags", "handler transfers with false identity flag", transfer.evaluation, verdict=transfer.policy_verdict),
-            scenario("end_call valid reason", "store agreement reason and queue EndFrame", "state and EndFrame observed", end_call.valid_reason),
-            scenario("end_call invalid reason", "error; no state mutation or EndFrame", "error with no state/frame observed", end_call.invalid_reason),
-        ]
-        prompt_rows = [
-            scenario("ordinary priced prompt", "normalized rates and agreement/end instructions", "values and instructions checked", prompts.ordinary_priced),
-            scenario("no-rate prompt", "no-rate instruction without literal None prices", "normalizer/builder result recorded", prompts.no_rate),
-            scenario("formatted-rate prompt", "parse $1,800.50 / 1,950 / $2,100 and render opening", "normalized values and prompt checked", prompts.formatted_rate),
-            scenario("equal opening/goal prompt", "no instruction contradiction", "builder result checked for required/forbidden collision", prompts.equal_opening_goal),
-        ]
-        calibration = [
-            scenario("Room1 good disclosure control", "accept safe text", "accepted", room1.good_control),
-            scenario("Room1 planted disclosure control", "reject internal target/ceiling", "rejected", room1.planted_bad_control, verdict="PASS" if not room1.planted_bad_control.passed else "FAIL"),
-            *[scenario(name, "accept acceptable / reject unacceptable scripted trace", "control evaluated", result, verdict="PASS" if (result.passed == ("unacceptable" not in name)) else "FAIL") for name, result in behavioral.controls],
-        ]
-
-    report = write_report(run_count=run_count, duration_seconds=time.monotonic() - started, evaluation_pytest=eval_pytest, existing_regression=existing_pytest, real_handlers=handlers, prompt_contracts=prompt_rows, calibration=calibration, errors=errors)
+    report = write_report(
+        requested_run_count=run_count, run_results=completed_runs,
+        duration_seconds=time.monotonic() - started,
+        evaluation_pytest=eval_pytest, existing_regression=existing_pytest,
+        real_handlers=_aggregate(completed_runs, "real_handlers"),
+        prompt_contracts=_aggregate(completed_runs, "prompt_contracts"),
+        calibration=_aggregate(completed_runs, "synthetic_calibration"), errors=errors,
+    )
     print("Wrote evals/report.md and evals/report.json")
+    print(f"Completed runs: {report['completed_run_count']}/{report['requested_run_count']}")
     print(f"Real handlers: {report['real_handler_summary']}")
     print(f"Prompt contracts: {report['prompt_contract_summary']}")
     print(f"Synthetic calibration: {report['synthetic_calibration_summary']}")

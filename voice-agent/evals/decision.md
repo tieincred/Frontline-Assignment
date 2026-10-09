@@ -68,6 +68,9 @@ deterministic mocks, helping detect run instability but providing no estimate of
 live-model reliability. The runner exits nonzero for real-handler failures or
 prompt-contract findings or execution/harness errors; unresolved policy is
 counted and explained, not silently converted into either a pass or a failure.
+Each completed run is retained in JSON; aggregate verdicts derive from that
+captured evidence and fail if any run fails. The report identifies both the
+evaluated source revision and working-tree changes.
 
 Synthetic behavioral controls pair acceptable and unacceptable scripts for
 numeric/spoken confidentiality disclosure, agreement acceptance/contact,
