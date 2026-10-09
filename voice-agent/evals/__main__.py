@@ -27,8 +27,15 @@ async def main() -> int:
     print(f"normal quote calls: {agreement.normal_quote_calls}")
     print(f"follow-up save calls: {agreement.follow_up_save_calls}")
     print(f"follow-up quote calls: {agreement.follow_up_quote_calls}")
+    print(f"below-ceiling save calls: {agreement.below_ceiling_save_calls}")
+    print(f"below-ceiling quote calls: {agreement.below_ceiling_quote_calls}")
+    print(f"save-failure save calls: {agreement.save_failure_save_calls}")
+    print(f"save-failure quote calls: {agreement.save_failure_quote_calls}")
     _print_evaluation("normal agreement path", agreement.normal_evaluation)
     _print_evaluation("above-max follow-up path", agreement.follow_up_evaluation)
+    _print_evaluation("above-max follow-up payload", agreement.follow_up_payload_evaluation)
+    _print_evaluation("below-ceiling agreement", agreement.below_ceiling_evaluation)
+    _print_evaluation("save failure", agreement.save_failure_evaluation)
     print("Unconfirmed transfer")
     _print_evaluation("transfer identity guard", transfer.evaluation)
 
@@ -39,6 +46,9 @@ async def main() -> int:
     handler_failures = (
         not agreement.normal_evaluation.passed
         or not agreement.follow_up_evaluation.passed
+        or not agreement.follow_up_payload_evaluation.passed
+        or not agreement.below_ceiling_evaluation.passed
+        or not agreement.save_failure_evaluation.passed
         or not transfer.evaluation.passed
     )
     calibration_failed = (

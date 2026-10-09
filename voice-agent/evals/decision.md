@@ -15,14 +15,20 @@
    and quote-notification calls. The runner exits 1 for this observed handler
    behavior; the mocks do not prove completed persistence or delivery.
 2. An above-max follow-up with contact details issues a mocked save call and no
-   quote-notification call.
-3. A transfer with a loaded reference but `carrier_identity_confirmed=false`
-   still sets transfer metadata and schedules transfer. The runner exits 1 for
-   this observed handler behavior.
-4. Invalid and missing load lookups preserve the greeting/history and avoid a
+   quote-notification call; its full mocked save payload is checked.
+3. A below-ceiling agreement checks the complete mocked save call (load UUID,
+   price, call ID, and contacts) and quote payload. A mocked `None` save result
+   returns the database error and issues no quote-notification call.
+4. A direct transfer fixture with a routable loaded reference and
+   `carrier_identity_confirmed=false` still sets transfer metadata and schedules
+   transfer. This proves that `handle_transfer_to_human` does not inspect that
+   field in this fixture. It does not prove the field is an authoritative
+   requirement in every configuration: the phone-first producer of identity
+   state is gated by `HIGHWAY_PHONE_LOOKUP_ENABLED` upstream.
+5. Invalid and missing load lookups preserve the greeting/history and avoid a
    call-record update. A successful lookup replaces the system prompt and sets
    load state.
-5. `get_load_by_reference` ignores `org_id`; record this as a known limitation,
+6. `get_load_by_reference` ignores `org_id`; record this as a known limitation,
    not a passing tenant-isolation test.
 
 ## Calibration decision

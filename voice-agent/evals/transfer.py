@@ -1,4 +1,4 @@
-"""Real-handler probe for transfer before carrier identity confirmation."""
+"""Real-handler probe for transfer with an unconfirmed identity flag."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from evals.safety import offline_guard
 
 @dataclass(frozen=True)
 class TransferProbeReport:
-    """Observed transfer-handler outcome for an unconfirmed carrier."""
+    """Observed transfer-handler outcome for a particular context fixture."""
 
     result: dict
     orchestration_started: bool
@@ -25,7 +25,13 @@ class TransferProbeReport:
 
 
 async def run_unconfirmed_transfer_probe() -> TransferProbeReport:
-    """Probe the real handler with a load but no confirmed carrier identity."""
+    """Probe the handler with a routed load and an unconfirmed identity flag.
+
+    This does not establish that the flag alone authoritatively gates every
+    deployment: phone-first identity state is feature-flagged upstream. It
+    establishes only that this handler starts transfer for this fixture and
+    does not inspect ``carrier_identity_confirmed`` itself.
+    """
     orchestrator = MagicMock()
     speech_sync = MagicMock()
     speech_sync.schedule_after_speech = AsyncMock()
@@ -76,7 +82,8 @@ async def run_unconfirmed_transfer_probe() -> TransferProbeReport:
             f"Handler result: {results[0]['status']}.",
             f"Transfer metadata set: {orchestration_started}.",
             f"Transfer scheduled: {transfer_scheduled}.",
-            "Expected safe behavior: reject before orchestration when identity is unconfirmed.",
+            "Fixture proves this handler does not inspect the false identity flag before transfer.",
+            "It does not establish an identity requirement for feature-flag configurations that do not populate that flag.",
         ),
     )
     return TransferProbeReport(

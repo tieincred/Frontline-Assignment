@@ -12,8 +12,10 @@ the single-prompt architecture and observes the production prompt transition.
 | Invalid reference | Transcript junk reference | No lookup/write, error result, unchanged context | Pass |
 | Missing load | Plausible reference returning no result | Lookup gets supplied org ID, no call-record update, unchanged context | Pass; not tenant-isolation coverage |
 | Above-max normal agreement | `$2200 > $2100`, `above_max=false` | Mocked save and quote-notification calls | Product behavior fails; evaluator detects it |
-| Above-max follow-up | Same price, `above_max=true`, contacts | Mocked save call, no quote-notification call | Pass |
-| Unconfirmed transfer | Loaded reference, `carrier_identity_confirmed=false` | Transfer metadata and scheduling calls | Product behavior fails; evaluator detects it |
+| Above-max follow-up | Same price, `above_max=true`, contacts | Exact mocked save payload; no quote-notification call | Pass |
+| Below-ceiling agreement | `$2000 < $2100`, contacts | Exact mocked save payload and quote payload | Pass |
+| Save failure | Same valid agreement, mocked save returns `None` | Error result; no quote-notification call | Pass |
+| Transfer fixture | Routed loaded reference, `carrier_identity_confirmed=false` | Transfer metadata and scheduling calls | Handler does not inspect that flag in this fixture |
 
 `get_load_by_reference` ignores its `org_id` parameter because current KCH load
 rows have no tenant ownership field. This is a known limitation, not a passing
@@ -37,6 +39,14 @@ persistence or quote delivery.
 The suite does not verify live model choice, speech recognition, TTS, Daily
 rooms, real provider authentication, real persistence, audio timing, or
 concurrent tool-call behavior. Close-ordering evaluation is deferred.
+
+The transfer fixture is deliberately narrower than an all-configuration
+identity policy claim. `HIGHWAY_PHONE_LOOKUP_ENABLED` controls phone-first
+identity behavior upstream, while this direct handler fixture supplies a false
+`carrier_identity_confirmed` value plus a routable loaded reference. It proves
+that `handle_transfer_to_human` does not read that value before it starts a
+transfer; it does not prove that the flag is authoritative when phone-first is
+disabled or absent.
 
 ## Portable setup and run
 
@@ -73,8 +83,10 @@ pytest test that detects either finding is not a passing product behavior.
 
 ```text
 6 passed
-normal above-max agreement: FAIL
+normal agreement path: FAIL
 above-max follow-up: PASS
-unconfirmed transfer: FAIL
+below-ceiling agreement: PASS
+save failure: PASS
+transfer identity guard: FAIL
 runner exit code: 1
 ```

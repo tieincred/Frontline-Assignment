@@ -1,4 +1,4 @@
-"""Shared offline scenario for the above-max agreement safety check."""
+"""Shared offline scenarios for agreement-recording safety and success paths."""
 
 from __future__ import annotations
 
@@ -16,18 +16,30 @@ from evals.safety import offline_guard
 
 MAX_RATE = 2100.0
 ABOVE_MAX_PRICE = 2200.0
+BELOW_CEILING_PRICE = 2000.0
+
+
 @dataclass(frozen=True)
 class AgreementScenarioReport:
-    """Observed side effects and evaluations for both above-max tool calls."""
+    """Observed side effects and evaluations for mocked agreement tool calls."""
 
     normal_result: dict
     follow_up_result: dict
     normal_evaluation: EvaluationResult
     follow_up_evaluation: EvaluationResult
+    follow_up_payload_evaluation: EvaluationResult
+    below_ceiling_result: dict
+    below_ceiling_evaluation: EvaluationResult
+    save_failure_result: dict
+    save_failure_evaluation: EvaluationResult
     normal_save_calls: tuple[tuple, ...]
     normal_quote_calls: tuple[dict[str, object], ...]
     follow_up_save_calls: tuple[tuple, ...]
     follow_up_quote_calls: tuple[dict[str, object], ...]
+    below_ceiling_save_calls: tuple[tuple, ...]
+    below_ceiling_quote_calls: tuple[dict[str, object], ...]
+    save_failure_save_calls: tuple[tuple, ...]
+    save_failure_quote_calls: tuple[dict[str, object], ...]
 
 
 def _agreement_context() -> SimpleNamespace:
@@ -41,10 +53,12 @@ def _agreement_context() -> SimpleNamespace:
 
 
 async def run_above_max_agreement_scenario() -> AgreementScenarioReport:
-    """Run both existing above-max paths without persistence or network access."""
+    """Run agreement paths without persistence or network access."""
     context = _agreement_context()
     normal_results: list[dict] = []
     follow_up_results: list[dict] = []
+    below_ceiling_results: list[dict] = []
+    save_failure_results: list[dict] = []
 
     async def capture_normal_result(payload, *, properties=None):
         normal_results.append(json.loads(payload))
@@ -52,10 +66,18 @@ async def run_above_max_agreement_scenario() -> AgreementScenarioReport:
     async def capture_follow_up_result(payload, *, properties=None):
         follow_up_results.append(json.loads(payload))
 
+    async def capture_below_ceiling_result(payload, *, properties=None):
+        below_ceiling_results.append(json.loads(payload))
+
+    async def capture_save_failure_result(payload, *, properties=None):
+        save_failure_results.append(json.loads(payload))
+
     save_agreement = MagicMock(
         side_effect=[
             UUID("00000000-0000-0000-0000-000000000201"),
             UUID("00000000-0000-0000-0000-000000000202"),
+            UUID("00000000-0000-0000-0000-000000000203"),
+            None,
         ]
     )
     notify_quote = MagicMock(return_value="quote-001")
@@ -120,14 +142,129 @@ async def run_above_max_agreement_scenario() -> AgreementScenarioReport:
             database_recorded=bool(follow_up_save_calls),
             quote_sent=bool(follow_up_quote_calls),
         )
+        expected_follow_up_save = (
+            context.load_uuid,
+            ABOVE_MAX_PRICE,
+            context.call_id,
+            True,
+            "Casey Carrier",
+            "+14155550101",
+        )
+        follow_up_payload_evaluation = EvaluationResult(
+            passed=(
+                follow_up_save_calls == (expected_follow_up_save,)
+                and not follow_up_quote_calls
+                and follow_up_results[0]["status"] == "success"
+            ),
+            evidence=(
+                f"Expected follow-up save call: {expected_follow_up_save!r}.",
+                f"Observed follow-up save calls: {follow_up_save_calls!r}.",
+                f"Observed follow-up quote calls: {follow_up_quote_calls!r}.",
+                f"Handler result: {follow_up_results[0]['status']}.",
+            ),
+        )
+
+        below_ceiling_save_start = len(save_agreement.call_args_list)
+        below_ceiling_quote_start = len(notify_quote.call_args_list)
+        await record_agreement(
+            "record_agreement",
+            "below-ceiling",
+            {
+                "agreed_price": BELOW_CEILING_PRICE,
+                "above_max": False,
+                "carrier_contact_name": "Jordan Carrier",
+                "carrier_contact_phone": "+14155550102",
+            },
+            None,
+            context,
+            capture_below_ceiling_result,
+        )
+        below_ceiling_save_calls = tuple(
+            call.args
+            for call in save_agreement.call_args_list[below_ceiling_save_start:]
+        )
+        below_ceiling_quote_calls = tuple(
+            dict(call.kwargs)
+            for call in notify_quote.call_args_list[below_ceiling_quote_start:]
+        )
+        expected_below_ceiling_save = (
+            context.load_uuid,
+            BELOW_CEILING_PRICE,
+            context.call_id,
+            False,
+            "Jordan Carrier",
+            "+14155550102",
+        )
+        expected_below_ceiling_quote = {
+            "load_name": "REF-1234",
+            "agreed_price": BELOW_CEILING_PRICE,
+            "mc_number": context.caller_mc,
+            "source_type": "call",
+            "carrier_name": "Jordan Carrier",
+            "carrier_phone": "+14155550102",
+        }
+        below_ceiling_evaluation = EvaluationResult(
+            passed=(
+                below_ceiling_save_calls == (expected_below_ceiling_save,)
+                and below_ceiling_quote_calls == (expected_below_ceiling_quote,)
+                and below_ceiling_results[0]["status"] == "success"
+            ),
+            evidence=(
+                f"Expected below-ceiling save call: {expected_below_ceiling_save!r}.",
+                f"Observed below-ceiling save calls: {below_ceiling_save_calls!r}.",
+                f"Expected quote payload: {expected_below_ceiling_quote!r}.",
+                f"Observed quote calls: {below_ceiling_quote_calls!r}.",
+                f"Handler result: {below_ceiling_results[0]['status']}.",
+            ),
+        )
+
+        save_failure_save_start = len(save_agreement.call_args_list)
+        save_failure_quote_start = len(notify_quote.call_args_list)
+        await record_agreement(
+            "record_agreement",
+            "save-failure",
+            {"agreed_price": BELOW_CEILING_PRICE, "above_max": False},
+            None,
+            context,
+            capture_save_failure_result,
+        )
+        save_failure_save_calls = tuple(
+            call.args for call in save_agreement.call_args_list[save_failure_save_start:]
+        )
+        save_failure_quote_calls = tuple(
+            dict(call.kwargs)
+            for call in notify_quote.call_args_list[save_failure_quote_start:]
+        )
+        save_failure_evaluation = EvaluationResult(
+            passed=(
+                bool(save_failure_save_calls)
+                and not save_failure_quote_calls
+                and save_failure_results[0]
+                == {"status": "error", "message": "Failed to record in database"}
+            ),
+            evidence=(
+                f"Save attempts: {save_failure_save_calls!r}.",
+                f"Quote-notification calls: {save_failure_quote_calls!r}.",
+                f"Handler result: {save_failure_results[0]!r}.",
+            ),
+        )
 
     return AgreementScenarioReport(
         normal_result=normal_results[0],
         follow_up_result=follow_up_results[0],
         normal_evaluation=normal_evaluation,
         follow_up_evaluation=follow_up_evaluation,
+        follow_up_payload_evaluation=follow_up_payload_evaluation,
+        below_ceiling_result=below_ceiling_results[0],
+        below_ceiling_evaluation=below_ceiling_evaluation,
+        save_failure_result=save_failure_results[0],
+        save_failure_evaluation=save_failure_evaluation,
         normal_save_calls=normal_save_calls,
         normal_quote_calls=normal_quote_calls,
         follow_up_save_calls=follow_up_save_calls,
         follow_up_quote_calls=follow_up_quote_calls,
+        below_ceiling_save_calls=below_ceiling_save_calls,
+        below_ceiling_quote_calls=below_ceiling_quote_calls,
+        save_failure_save_calls=save_failure_save_calls,
+        save_failure_quote_calls=save_failure_quote_calls,
     )
