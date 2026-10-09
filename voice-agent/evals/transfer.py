@@ -22,6 +22,7 @@ class TransferProbeReport:
     orchestration_started: bool
     transfer_scheduled: bool
     evaluation: EvaluationResult
+    policy_verdict: str
 
 
 async def run_unconfirmed_transfer_probe() -> TransferProbeReport:
@@ -76,13 +77,13 @@ async def run_unconfirmed_transfer_probe() -> TransferProbeReport:
     orchestration_started = orchestrator.set_transfer_metadata.called
     transfer_scheduled = speech_sync.schedule_after_speech.await_count > 0
     evaluation = EvaluationResult(
-        passed=not orchestration_started and not transfer_scheduled,
+        passed=orchestration_started and transfer_scheduled,
         evidence=(
             "Context had load_uuid and carrier_identity_confirmed=False.",
             f"Handler result: {results[0]['status']}.",
             f"Transfer metadata set: {orchestration_started}.",
             f"Transfer scheduled: {transfer_scheduled}.",
-            "Fixture proves this handler does not inspect the false identity flag before transfer.",
+            "Observed handler behavior: it does not inspect the false identity flag before transfer.",
             "It does not establish an identity requirement for feature-flag configurations that do not populate that flag.",
         ),
     )
@@ -91,4 +92,5 @@ async def run_unconfirmed_transfer_probe() -> TransferProbeReport:
         orchestration_started=orchestration_started,
         transfer_scheduled=transfer_scheduled,
         evaluation=evaluation,
+        policy_verdict="UNRESOLVED",
     )

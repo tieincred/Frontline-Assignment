@@ -1,47 +1,85 @@
 # Evaluation decisions
 
-## Implemented scope
+## Scope and priorities
 
-- Preserve production code and the existing single-prompt architecture.
-- Run handler probes with dummy configuration, mocked side-effect boundaries,
-  and a socket-level no-network tripwire.
-- Keep real handler results separate from synthetic grader calibration.
-- Make no claim about live model choice, audio, speech recognition, Daily,
-  real persistence, provider authentication, or concurrent tool calls.
+This suite preserves the single-prompt architecture and production code. It
+focuses on the most expensive, observable mistakes: selecting the wrong load,
+discarding greeting/history when prompt context switches, recording or quoting
+an above-limit rate as an agreement, losing a valid agreement's identifiers,
+and transferring before policy requirements are known. These handler
+boundaries are higher confidence and lower-cost than pretending an offline
+fixture can prove a live voice conversation is safe.
 
-## Actual findings
+Implemented real-handler scenarios are: successful, invalid, and missing load
+lookups; normal above-max agreement; above-max follow-up; below-ceiling
+agreement; save failure; one transfer fixture; and valid/invalid `end_call`.
+Existing mocked carrier-verification/phone-persistence and transfer
+load/routing regressions remain in `test_phone_carrier_lookup.py` and
+`test_transfer_tool_handler.py`; they are reported separately, not double
+counted. Real normalizer/prompt contracts cover ordinary, no-rate, formatted,
+and equal opening/goal fixtures. A payload check is evidence for its parent
+scenario, not a separate scenario.
 
-1. An above-max price submitted with `above_max=false` issues mocked normal-save
-   and quote-notification calls. The runner exits 1 for this observed handler
-   behavior; the mocks do not prove completed persistence or delivery.
-2. An above-max follow-up with contact details issues a mocked save call and no
-   quote-notification call; its full mocked save payload is checked.
-3. A below-ceiling agreement checks the complete mocked save call (load UUID,
-   price, call ID, and contacts) and quote payload. A mocked `None` save result
-   returns the database error and issues no quote-notification call.
-4. A direct transfer fixture with a routable loaded reference and
-   `carrier_identity_confirmed=false` still sets transfer metadata and schedules
-   transfer. This proves that `handle_transfer_to_human` does not inspect that
-   field in this fixture. It does not prove the field is an authoritative
-   requirement in every configuration: the phone-first producer of identity
-   state is gated by `HIGHWAY_PHONE_LOOKUP_ENABLED` upstream.
-5. Invalid and missing load lookups preserve the greeting/history and avoid a
-   call-record update. A successful lookup replaces the system prompt and sets
-   load state.
-6. `get_load_by_reference` ignores `org_id`; record this as a known limitation,
-   not a passing tenant-isolation test.
+## Reasoning and success criteria
 
-## Calibration decision
+- A successful lookup must replace only the system prompt, preserve history,
+  store load state, and update the call record. Invalid/missing references must
+  return errors without changing the greeting/history; the missing-load probe
+  records that the handler passes `org_id` to its lookup boundary.
+- A strictly above-max normal agreement must neither save nor quote. This is a
+  failing product finding today because mocked calls are observed.
+- An above-max follow-up may save its complete load/price/call/contact payload
+  only without a quote. A below-ceiling agreement must save the complete
+  payload and issue the correct quote payload. If a mocked save returns `None`,
+  the handler must return its database error and not quote.
+- The transfer fixture observes actual handler behavior, but not a settled
+  product requirement: with a routable load and `carrier_identity_confirmed`
+  false, the direct handler transfers. Phone-first identity state is gated by
+  `HIGHWAY_PHONE_LOOKUP_ENABLED` upstream, so the false flag is not known to be
+  authoritative in configurations where that feature is disabled or absent.
+  This remains **unresolved**, rather than an asserted product failure.
+- `end_call` with `agreement` must set state and queue an `EndFrame`; an invalid
+  reason must return an error without either side effect.
+- Real prompt contracts show missing rates normalize to `0.0` and use no-rate
+  instructions, while formatted rates parse correctly. Equal opening/goal is a
+  finding: the prompt both requires the opening amount and forbids the equal
+  internal-goal amount.
+- The Room1 disclosure grader passes only if it accepts safe planted text and
+  rejects planted target/ceiling disclosure. That rejection validates the
+  grader; it does not describe a live model failure. Room2 is excluded because
+  internal-rate discussion with the broker is legitimate there.
 
-The Room1 disclosure grader uses planted controls only. Its bad control is not
-an observed product failure; it proves the grader rejects a trace containing
-internal goal/ceiling values and labels. Its good control proves an opening-rate
-response can pass. Room2 is excluded because its broker-facing prompt permits
-internal-rate discussion.
+## Assumptions and mocked boundaries
 
-## Deferred work
+All scenarios use dummy Supabase values, fixture loads, mock database/quote/
+transfer boundaries, and a socket-level no-network guard. Results prove handler
+control flow and attempted mock calls, not actual database durability, quote
+delivery, authentication, or provider behavior. The lookup test documents a
+known limitation: `get_load_by_reference` receives `org_id`, but its current
+implementation ignores it because the KCH load rows lack tenant ownership.
+This is not represented as passing tenant isolation.
 
-Close-ordering evaluation is deliberately deferred. Exact-ceiling behavior also
-remains a product ambiguity: the prompt's rate bands suggest `no_agreement` for
-a firm-at-ceiling bid, while another phrase can be read more broadly. Neither is
-claimed as implemented coverage.
+## Measurement trade-offs
+
+The CLI and pytest call shared scenario functions so their contracts do not
+drift. Pytest reports harness execution; real-handler and synthetic-calibration
+counts stay separate in the report. The explicit `--run-count` repeats
+deterministic mocks, helping detect run instability but providing no estimate of
+live-model reliability. The runner exits nonzero for real-handler failures or
+prompt-contract findings or execution/harness errors; unresolved policy is
+counted and explained, not silently converted into either a pass or a failure.
+
+Synthetic behavioral controls pair acceptable and unacceptable scripts for
+numeric/spoken confidentiality disclosure, agreement acceptance/contact,
+verification/load before transfer, and outcome-to-end-reason mapping. They
+calibrate deterministic rules only; no live-model response is inferred.
+
+## Omissions, limitations, and follow-up
+
+This suite does not cover a live LLM, STT/TTS, Daily rooms, audio timing,
+concurrency, real credentials, persistence, quote delivery, or end/close-call
+ordering. Exact-ceiling behavior remains ambiguous in the prompt and is not
+claimed. Follow-up work should decide transfer identity policy across feature
+flags, add a real tenant-ownership model before testing isolation, resolve
+exact-ceiling and close-ordering business rules, then add controlled model/audio
+evaluations with approved non-production infrastructure.

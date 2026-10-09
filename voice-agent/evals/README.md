@@ -1,92 +1,76 @@
-# Offline evaluation suite
+# Offline voice-agent evaluations
 
-The implemented suite evaluates selected handler/state contracts without
-production credentials, provider calls, audio, or a live model. It preserves
-the single-prompt architecture and observes the production prompt transition.
+Read the [decision note](decision.md) for scope and trade-offs, and the saved
+[Markdown report](report.md) or machine-readable [JSON report](report.json)
+for the latest completed evidence.
 
-## Implemented real-handler probes
+This suite exercises production handlers with deterministic fixtures only. It
+does not change production code, use credentials, contact a network service,
+or claim live-model/audio coverage. A socket tripwire fails unexpected network
+connections; database, quote, and transfer boundaries are mocks, so a mock
+call means a call was attempted, not that persistence or delivery completed.
 
-| Check | Input | Evidence | Current result |
-| --- | --- | --- | --- |
-| Successful load lookup | Fixture load after greeting history | System prompt replacement, preserved history, `load_uuid`/`load_context`, call-record update | Pass |
-| Invalid reference | Transcript junk reference | No lookup/write, error result, unchanged context | Pass |
-| Missing load | Plausible reference returning no result | Lookup gets supplied org ID, no call-record update, unchanged context | Pass; not tenant-isolation coverage |
-| Above-max normal agreement | `$2200 > $2100`, `above_max=false` | Mocked save and quote-notification calls | Product behavior fails; evaluator detects it |
-| Above-max follow-up | Same price, `above_max=true`, contacts | Exact mocked save payload; no quote-notification call | Pass |
-| Below-ceiling agreement | `$2000 < $2100`, contacts | Exact mocked save payload and quote payload | Pass |
-| Save failure | Same valid agreement, mocked save returns `None` | Error result; no quote-notification call | Pass |
-| Transfer fixture | Routed loaded reference, `carrier_identity_confirmed=false` | Transfer metadata and scheduling calls | Handler does not inspect that flag in this fixture |
+The report has four separate sections: existing mocked regression tests,
+real-handler evaluations, real normalizer/prompt-builder contracts, and
+synthetic calibration controls. Existing carrier-verification coverage lives in
+`tests/test_phone_carrier_lookup.py`; existing transfer load/routing coverage
+lives in `tests/test_transfer_tool_handler.py`. They remain regression tests,
+not newly counted evaluation scenarios.
 
-`get_load_by_reference` ignores its `org_id` parameter because current KCH load
-rows have no tenant ownership field. This is a known limitation, not a passing
-tenant-isolation case.
+## One setup and run sequence
 
-## Synthetic grader calibration
-
-The Room1 disclosure grader evaluates planted text controls, not observed model
-behavior. It accepts an opening-rate-only control and rejects a planted trace
-containing the internal goal, ceiling, and labels. It is intentionally limited
-to carrier-facing Room1 text: Room2 legitimately permits internal-rate
-discussion with the human broker.
-
-## Offline safety and limits
-
-Every implemented handler probe applies dummy configuration and a socket
-tripwire that fails any unexpected network connection. Database, quote, and
-transfer boundaries are mocks: a recorded mock call does not claim completed
-persistence or quote delivery.
-
-The suite does not verify live model choice, speech recognition, TTS, Daily
-rooms, real provider authentication, real persistence, audio timing, or
-concurrent tool-call behavior. Close-ordering evaluation is deferred.
-
-The transfer fixture is deliberately narrower than an all-configuration
-identity policy claim. `HIGHWAY_PHONE_LOOKUP_ENABLED` controls phone-first
-identity behavior upstream, while this direct handler fixture supplies a false
-`carrier_identity_confirmed` value plus a routable loaded reference. It proves
-that `handle_transfer_to_human` does not read that value before it starts a
-transfer; it does not prove that the flag is authoritative when phone-first is
-disabled or absent.
-
-## Portable setup and run
-
-The suite requires Python 3.11 plus the repository requirement files. From a
-fresh checkout at the repository root, use this complete sequence. `--seed`
-installs pip into the new environment, so the install command is available:
+From a fresh checkout at the repository root, use Python 3.11 and `uv`:
 
 ```bash
 cd voice-agent
 uv venv --seed --python 3.11 .venv
 .venv/bin/python -m pip install -r requirements.txt -r tests/requirements-test.txt
-```
-
-Run with placeholders only:
-
-```bash
-cd voice-agent
 SUPABASE_URL=http://test-suite.local SUPABASE_SERVICE_ROLE_KEY=test-key \
   .venv/bin/python -m pytest \
   tests/test_eval_replay.py tests/test_eval_agreement.py \
-  tests/test_eval_transfer.py tests/test_eval_prompt_grading.py -q
-
+  tests/test_eval_transfer.py tests/test_eval_prompt_grading.py \
+  tests/test_eval_end_call.py tests/test_eval_prompt_contracts.py \
+  tests/test_eval_behavioral.py -q
 SUPABASE_URL=http://test-suite.local SUPABASE_SERVICE_ROLE_KEY=test-key \
-  .venv/bin/python -m evals
+  .venv/bin/python -m evals --run-count 1
 ```
 
-Pytest covers the load-lookup replay and harness contracts. The CLI reports the
-real agreement and transfer handler probes separately from synthetic grader
-calibration. It intentionally exits non-zero while it observes the current
-unsafe normal-agreement and unconfirmed-transfer handler behavior. A passing
-pytest test that detects either finding is not a passing product behavior.
+`--run-count` repeats the same deterministic mocked scenario set. It is useful
+for checking runner repeatability, but it is not a sample of model reliability
+and must not be interpreted as one. The complete command runs the shared
+handler scenarios and the pytest harness, then overwrites `report.md` and
+`report.json` with commit, UTC timestamp, duration, run count, exact pytest
+exit/output, scenario table, evidence, and its own exit decision.
 
-## Completed run excerpt
+## Reading results and exit codes
 
-```text
-6 passed
-normal agreement path: FAIL
-above-max follow-up: PASS
-below-ceiling agreement: PASS
-save failure: PASS
-transfer identity guard: FAIL
-runner exit code: 1
-```
+The report separates four different measurements:
+
+- Pytest harness results: whether the shared mocks and assertions execute as
+  intended. They are not a product pass percentage.
+- Real-handler evaluations: ten distinct handler scenarios. Percentages name
+  their denominator: resolved scenarios are `pass + fail`; the all-scenario
+  rate also includes unresolved policy cases. Multiple assertions/payload
+  fields are evidence for one scenario, not additional scenarios.
+- Prompt contracts: real normalizer/prompt-builder results, with their own
+  pass/fail denominator.
+- Synthetic grader calibration: planted Room1 and behavioral text controls.
+  Bad text correctly being rejected is a calibration pass, not a product
+  failure.
+
+Prompt contracts run the real normalizer and negotiation-prompt builder for
+ordinary priced, no-rate, formatted-rate, and equal opening/goal fixtures.
+Contradictions are reported as findings; expectations are not relaxed to turn a
+finding into a pass. Behavioral controls are scripted good/bad traces for
+numeric and spoken confidential-rate disclosure, agreement/contact handling,
+verification/load-before-transfer ordering, and outcome-appropriate end
+reasons. They calibrate deterministic graders only; they are not observed model
+behavior.
+
+The runner exits `1` when a real-handler or prompt-contract scenario fails, or
+the runner/pytest errors. It reports unresolved policy assumptions separately.
+The current saved run exits `1` because the normal above-max agreement path
+makes mocked save and quote calls and the equal opening/goal prompt contract
+has contradictory required/forbidden instructions. The transfer fixture is
+unresolved, not counted as a product failure, because the feature-flag policy
+is not settled.

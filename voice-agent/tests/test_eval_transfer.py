@@ -11,10 +11,11 @@ async def test_evaluator_reports_transfer_started_for_unconfirmed_carrier():
     report = await run_unconfirmed_transfer_probe()
 
     assert report.evaluation.passed is (
-        not report.orchestration_started and not report.transfer_scheduled
+        report.orchestration_started and report.transfer_scheduled
     )
+    assert report.policy_verdict == "UNRESOLVED"
     assert "Context had load_uuid and carrier_identity_confirmed=False." in report.evaluation.evidence
     assert (
-        "Fixture proves this handler does not inspect the false identity flag before transfer."
+        "Observed handler behavior: it does not inspect the false identity flag before transfer."
         in report.evaluation.evidence
     )
