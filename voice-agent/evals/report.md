@@ -20,6 +20,21 @@
 37 passed, 17 subtests passed in 0.94s
 - Complete runner exit code: 1
 
+## Reporting-only amendment (no fresh evaluation run)
+
+This amendment preserves the completed two-run evidence and timestamp above.
+It does not change the run count, duration, test outputs, or exit code.
+
+- The above-max follow-up payload sub-check was evaluated inside each completed
+  agreement scenario but omitted from the prior report row. Its expected and
+  observed mocked save payload is `(load_uuid, 2200.0, call_id, True, "Casey
+  Carrier", "+14155550101")`; no quote-notification call was observed and the
+  handler result was `success`.
+- The transfer row's observation is captured handler evidence: callback status
+  `transferring`, transfer metadata call `True`, and transfer scheduling call
+  `True`. It remains unresolved because the identity-policy requirement across
+  feature-flag configurations has not been decided.
+
 ## Existing regression coverage (pre-existing tests)
 
 `tests/test_phone_carrier_lookup.py` supplies mocked carrier-verification and phone-first persistence coverage. `tests/test_transfer_tool_handler.py` supplies mocked transfer load/routing guard coverage. They are run and reported above as existing regressions, not re-counted as new scenarios.

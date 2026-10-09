@@ -4,6 +4,30 @@
   "working_tree_changes": "?? voice-agent/evals/\n?? voice-agent/tests/test_eval_agreement.py\n?? voice-agent/tests/test_eval_behavioral.py\n?? voice-agent/tests/test_eval_end_call.py\n?? voice-agent/tests/test_eval_prompt_contracts.py\n?? voice-agent/tests/test_eval_prompt_grading.py\n?? voice-agent/tests/test_eval_replay.py\n?? voice-agent/tests/test_eval_runner.py\n?? voice-agent/tests/test_eval_transfer.py",
   "requested_run_count": 2,
   "completed_run_count": 2,
+  "reporting_amendment": {
+    "fresh_evaluation_run": false,
+    "preserves_completed_evidence_timestamp": "2026-10-09T20:34:49.711041+00:00",
+    "follow_up_payload_check": {
+      "was_omitted_from_prior_row": true,
+      "expected_and_observed_save_call": [
+        "00000000-0000-0000-0000-000000000123",
+        2200.0,
+        "00000000-0000-0000-0000-000000000099",
+        true,
+        "Casey Carrier",
+        "+14155550101"
+      ],
+      "quote_notification_calls": [],
+      "handler_status": "success"
+    },
+    "transfer_observation": {
+      "source": "captured handler result",
+      "callback_status": "transferring",
+      "transfer_metadata_call": true,
+      "transfer_scheduling_call": true,
+      "policy_verdict": "UNRESOLVED"
+    }
+  },
   "run_results": [
     {
       "real_handlers": [

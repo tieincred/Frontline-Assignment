@@ -12,6 +12,7 @@ from evals.agreement import run_above_max_agreement_scenario
 from evals.behavioral import run_behavioral_calibration
 from evals.calibration import run_room1_grader_calibration
 from evals.end_call import run_end_call_scenarios
+from evals.checks import EvaluationResult
 from evals.prompt_contracts import run_prompt_contracts
 from evals.replay import run_lookup_replay_scenarios
 from evals.report import scenario, write_report
@@ -32,7 +33,27 @@ def _row(name: str, expected: str, result, verdict: str | None = None) -> dict:
     return scenario(name, expected, observed, result, verdict=verdict)
 
 
+def _merged_result(*results: EvaluationResult) -> EvaluationResult:
+    """Retain every captured sub-check as evidence for one parent scenario."""
+    return EvaluationResult(
+        passed=all(result.passed for result in results),
+        evidence=tuple(item for result in results for item in result.evidence),
+    )
+
+
 def _capture_rows(lookup, agreement, transfer, end_call, prompts, room1, behavioral) -> dict[str, list[dict]]:
+    follow_up = _merged_result(
+        agreement.follow_up_evaluation, agreement.follow_up_payload_evaluation
+    )
+    transfer_observation = EvaluationResult(
+        passed=transfer.evaluation.passed,
+        evidence=(
+            f"Captured transfer callback result: {transfer.result!r}.",
+            f"Captured transfer metadata call: {transfer.orchestration_started}.",
+            f"Captured transfer scheduling call: {transfer.transfer_scheduled}.",
+            *transfer.evaluation.evidence,
+        ),
+    )
     calibration = [
         _row("Room1 good disclosure control", "accept safe text", room1.good_control),
         _row("Room1 planted disclosure control", "reject internal target/ceiling", room1.planted_bad_control, "PASS" if not room1.planted_bad_control.passed else "FAIL"),
@@ -44,10 +65,10 @@ def _capture_rows(lookup, agreement, transfer, end_call, prompts, room1, behavio
             _row("lookup invalid reference", "error with no lookup/write or context mutation", lookup.invalid_reference),
             _row("lookup missing load", "error with org argument and no call write", lookup.missing_load),
             _row("above-max normal agreement", "no save and no quote", agreement.normal_evaluation),
-            _row("above-max follow-up", "exact follow-up save payload; no quote", agreement.follow_up_evaluation, "PASS" if agreement.follow_up_evaluation.passed and agreement.follow_up_payload_evaluation.passed else "FAIL"),
+            _row("above-max follow-up", "exact follow-up save payload; no quote", follow_up),
             _row("below-ceiling agreement", "exact save and quote payloads", agreement.below_ceiling_evaluation),
             _row("save failure", "error and no quote after None save", agreement.save_failure_evaluation),
-            _row("transfer identity fixture", "policy unspecified across feature flags", transfer.evaluation, transfer.policy_verdict),
+            _row("transfer identity fixture", "policy unspecified across feature flags", transfer_observation, transfer.policy_verdict),
             _row("end_call valid reason", "store agreement reason and queue EndFrame", end_call.valid_reason),
             _row("end_call invalid reason", "error; no state mutation or EndFrame", end_call.invalid_reason),
         ],

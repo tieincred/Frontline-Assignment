@@ -30,7 +30,7 @@ SUPABASE_URL=http://test-suite.local SUPABASE_SERVICE_ROLE_KEY=test-key \
   tests/test_eval_replay.py tests/test_eval_agreement.py \
   tests/test_eval_transfer.py tests/test_eval_prompt_grading.py \
   tests/test_eval_end_call.py tests/test_eval_prompt_contracts.py \
-  tests/test_eval_behavioral.py -q
+  tests/test_eval_behavioral.py tests/test_eval_runner.py -q
 SUPABASE_URL=http://test-suite.local SUPABASE_SERVICE_ROLE_KEY=test-key \
   .venv/bin/python -m evals --run-count 1
 ```
@@ -51,10 +51,11 @@ The report separates four different measurements:
 
 - Pytest harness results: whether the shared mocks and assertions execute as
   intended. They are not a product pass percentage.
-- Real-handler evaluations: ten distinct handler scenarios. Percentages name
-  their denominator: resolved scenarios are `pass + fail`; the all-scenario
-  rate also includes unresolved policy cases. Multiple assertions/payload
-  fields are evidence for one scenario, not additional scenarios.
+- Real-handler evaluations: ten distinct handler scenarios. Percentages use
+  the explicit resolved denominator (`pass + fail`); unresolved policy cases
+  are reported separately rather than folded into that percentage. Multiple
+  assertions/payload fields are evidence for one scenario, not additional
+  scenarios.
 - Prompt contracts: real normalizer/prompt-builder results, with their own
   pass/fail denominator.
 - Synthetic grader calibration: planted Room1 and behavioral text controls.
